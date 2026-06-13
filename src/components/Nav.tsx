@@ -4,6 +4,7 @@ import { Link, useIsActive } from "@interchained/portal-react";
 const LINKS = [
   { href: "/", label: "Home" },
   { href: "/studio", label: "Studio" },
+  { href: "/databases", label: "Databases" },
   { href: "/query", label: "Query" },
   { href: "/about", label: "About" },
   { href: "/docs", label: "Docs" },
@@ -38,6 +39,13 @@ export function Nav(): React.ReactElement {
           ))}
         </nav>
         <div className="flex items-center gap-2">
+          <Link
+            href="/settings"
+            className="rounded-md px-2 py-1.5 text-sm text-slate-400 transition hover:text-white"
+            title="Settings — NEDB connection"
+          >
+            ⚙
+          </Link>
           <a
             href="https://www.npmjs.com/package/nedb-engine"
             target="_blank"

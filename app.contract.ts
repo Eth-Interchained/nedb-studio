@@ -137,6 +137,22 @@ export default defineApp({
       seoKeyword: "natural language database query NQL",
     },
     {
+      route: "/databases",
+      purpose:
+        "The deployment console: connect to a running NEDB server (nedbd), deploy a generated scaffold into a durable database, then query it live, inspect integrity and the append-only log, write rows, and view connection details",
+      audience: "Developers deploying and operating live NEDB databases",
+      primaryAction: "Deploy database",
+      seoKeyword: "deploy NEDB database server",
+    },
+    {
+      route: "/settings",
+      purpose:
+        "Configure the NEDB connection (NEDB_URL + optional token, env-first with a runtime override), test connectivity to nedbd, and review AiAssist gateway status and studio preferences",
+      audience: "Developers configuring the studio's database connection",
+      primaryAction: "Test connection",
+      seoKeyword: "NEDB connection settings",
+    },
+    {
       route: "/about",
       purpose:
         "Explain the NEDB engine — replay-protected log, MVCC time-travel, relations, Cascade compression, Merkle roots — and why it matters for AI agents",

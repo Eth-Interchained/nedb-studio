@@ -12,9 +12,12 @@ import { compileNql } from "../lib/api";
 export function QueryConsole({
   scaffold,
   initialNql = "",
+  runNql,
 }: {
   scaffold: NEDBScaffold;
   initialNql?: string;
+  /** When provided, NQL runs against the live NEDB server; else in-browser. */
+  runNql?: (nql: string) => Promise<QueryResult>;
 }): React.ReactElement {
   const first = scaffold.collections[0]?.name ?? "rows";
   const [nl, setNl] = useState("");
@@ -24,14 +27,17 @@ export function QueryConsole({
   const [live, setLive] = useState(false);
   const didInit = useRef(false);
 
-  // A seeded query (collection click / example chip) runs locally on mount —
-  // no API needed: executeNql is the real in-browser NQL engine over seed data.
+  // Execute NQL: against the live daemon when runNql is given, else the real
+  // in-browser NQL engine over the scaffold's seed data.
+  const exec = async (q: string): Promise<QueryResult> => (runNql ? runNql(q) : executeNql(q, scaffold));
+
+  // A seeded query (collection click / example chip) runs on mount.
   useEffect(() => {
     if (!didInit.current && initialNql.trim()) {
       didInit.current = true;
-      setResult(executeNql(initialNql, scaffold));
+      void exec(initialNql).then(setResult);
     }
-  }, [initialNql, scaffold]);
+  }, [initialNql, scaffold]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const examples = [
     `Show active ${first}, newest first`,
@@ -53,7 +59,7 @@ export function QueryConsole({
       const res = await compileNql(q, schema);
       setNql(res.nql);
       setLive(res.mode === "live");
-      setResult(executeNql(res.nql, scaffold));
+      setResult(await exec(res.nql));
     } catch (e) {
       setResult({ rows: [], columns: [], count: 0, error: String(e) });
     } finally {
@@ -61,8 +67,8 @@ export function QueryConsole({
     }
   }
 
-  function run(): void {
-    if (nql.trim()) setResult(executeNql(nql, scaffold));
+  async function run(): Promise<void> {
+    if (nql.trim()) setResult(await exec(nql));
   }
 
   return (
@@ -111,7 +117,7 @@ export function QueryConsole({
           spellCheck={false}
           className="glass-soft code flex-1 rounded-lg px-3 py-2 text-accent-soft outline-none focus:border-accent/50"
         />
-        <button onClick={run} disabled={!nql.trim()} className="btn-ghost disabled:opacity-50">
+        <button onClick={() => void run()} disabled={!nql.trim()} className="btn-ghost disabled:opacity-50">
           Run
         </button>
       </div>

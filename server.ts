@@ -5,6 +5,8 @@ import cors from "cors";
 import express from "express";
 
 import { api } from "./src/server/generate";
+import { databases } from "./src/server/databases";
+import { settings } from "./src/server/settings";
 
 /** Minimal .env loader (no dependency). Real env always wins. */
 function loadEnv(): void {
@@ -22,6 +24,8 @@ loadEnv();
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+app.use("/api/databases", databases);
+app.use("/api/settings", settings);
 app.use("/api", api);
 
 const PORT = Number(process.env.PORT ?? 3001);

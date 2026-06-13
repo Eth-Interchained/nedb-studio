@@ -1,0 +1,359 @@
+import React, { useCallback, useEffect, useState } from "react";
+import { Head, Link } from "@interchained/portal-react";
+
+import { Nav } from "../src/components/Nav";
+import { QueryConsole } from "../src/components/QueryConsole";
+import type { QueryResult } from "../src/lib/nql";
+import {
+  databaseLog,
+  deployScaffold,
+  dropDatabase,
+  getConnectionStatus,
+  getDatabase,
+  getSettings,
+  listDatabases,
+  queryLiveDatabase,
+  verifyDatabase,
+  type ConnectionStatus,
+  type DbDetail,
+  type DbSummary,
+  type LogEntry,
+} from "../src/lib/api";
+import { SAMPLE_DATABASES, loadActiveDatabase } from "../src/lib/database";
+import type { FieldType, NEDBScaffold } from "../src/lib/types";
+
+export const intent = {
+  purpose: "Deploy a generated scaffold into a running NEDB server and query/operate the live, durable database",
+  primaryAction: "Deploy database",
+  seoKeyword: "deploy NEDB database server",
+};
+
+type Tab = "query" | "log" | "connect";
+
+const pageSize = (): number =>
+  Number((typeof window !== "undefined" && window.localStorage.getItem("nedb-studio:pageSize")) || 100);
+
+function fieldType(v: unknown): FieldType {
+  if (typeof v === "number") return "number";
+  if (typeof v === "boolean") return "boolean";
+  if (v && typeof v === "object") return "json";
+  return "string";
+}
+
+export default function DatabasesPage(): React.ReactElement {
+  const [status, setStatus] = useState<ConnectionStatus | null>(null);
+  const [nedbUrl, setNedbUrl] = useState("");
+  const [dbs, setDbs] = useState<DbSummary[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<DbDetail | null>(null);
+  const [live, setLive] = useState<NEDBScaffold | null>(null);
+  const [tab, setTab] = useState<Tab>("query");
+  const [seedNql, setSeedNql] = useState("");
+  const [seedKey, setSeedKey] = useState(0);
+  const [log, setLog] = useState<LogEntry[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const studioDb = typeof window !== "undefined" ? loadActiveDatabase() : null;
+
+  const refresh = useCallback(async () => {
+    const st = await getConnectionStatus();
+    setStatus(st);
+    if (st.connected) {
+      try { setDbs(await listDatabases()); } catch (e) { setError(String(e)); }
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    void getSettings().then((s) => setNedbUrl(s.nedb.effective.url)).catch(() => {});
+  }, [refresh]);
+
+  const select = useCallback(async (name: string) => {
+    setSelected(name);
+    setTab("query");
+    setSeedNql("");
+    setDetail(null);
+    setLive(null);
+    try {
+      const d = await getDatabase(name);
+      setDetail(d);
+      // Synthesize a schema from the live DB (collection names + sampled fields)
+      // so NL→NQL has something to work with; queries run on the real engine.
+      const collections = [];
+      for (const cname of Object.keys(d.collections)) {
+        let fields = [{ name: "_id", type: "string" as FieldType }];
+        try {
+          const r = await queryLiveDatabase(name, `FROM ${cname} LIMIT 1`);
+          const sample = r.rows[0];
+          if (sample) fields = Object.keys(sample).map((k) => ({ name: k, type: fieldType(sample[k]) }));
+        } catch { /* ignore */ }
+        collections.push({ name: cname, fields });
+      }
+      setLive({
+        appName: d.name,
+        description: `Live database · ${d.rows} rows · seq ${d.seq}`,
+        collections,
+        relations: [],
+        indexes: d.indexes.map(([collection, field, kind]) => ({ collection, field, kind: kind as "eq" | "ordered" | "search" })),
+        seedData: {},
+        nqlExamples: Object.keys(d.collections).slice(0, 3).map((c) => `FROM ${c} LIMIT ${pageSize()}`),
+        pythonSnippet: "",
+        nodeSnippet: "",
+        readmeExport: "",
+      });
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  async function deploy(scaffold: NEDBScaffold, name: string): Promise<void> {
+    setBusy(name);
+    setError(null);
+    try {
+      const created = await deployScaffold(scaffold, name);
+      await refresh();
+      await select(created.name);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onVerify(): Promise<void> {
+    if (!selected) return;
+    const v = await verifyDatabase(selected);
+    setDetail((d) => (d ? { ...d, integrity: { ok: v.ok } } : d));
+  }
+
+  async function onDrop(): Promise<void> {
+    if (!selected || typeof window === "undefined" || !window.confirm(`Drop database "${selected}"? This cannot be undone.`)) return;
+    await dropDatabase(selected);
+    setSelected(null);
+    setDetail(null);
+    await refresh();
+  }
+
+  const runLive = useCallback(async (nql: string): Promise<QueryResult> => {
+    if (!selected) return { rows: [], columns: [], count: 0, error: "no database selected" };
+    const r = await queryLiveDatabase(selected, nql);
+    if (r.error) return { rows: [], columns: [], count: 0, error: r.error };
+    const columns: string[] = [];
+    for (const row of r.rows) for (const k of Object.keys(row)) if (!columns.includes(k)) columns.push(k);
+    return { rows: r.rows, columns, count: r.count, note: `seq ${r.seq}` };
+  }, [selected]);
+
+  function browse(coll: string): void {
+    setSeedNql(`FROM ${coll} LIMIT ${pageSize()}`);
+    setSeedKey((k) => k + 1);
+    setTab("query");
+  }
+
+  useEffect(() => {
+    if (tab === "log" && selected) void databaseLog(selected, 50).then(setLog).catch(() => setLog([]));
+  }, [tab, selected, detail]);
+
+  const connected = status?.connected;
+
+  return (
+    <div className="flex h-screen flex-col">
+      <Head title="Databases" description="Deploy and operate live, durable NEDB databases on a running nedbd server." />
+      <Nav />
+
+      {status && !connected ? (
+        <div className="border-b border-signal-amber/30 bg-signal-amber/10 px-5 py-2 text-xs text-signal-amber">
+          Not connected to a NEDB server. Start one with <span className="font-mono">pip install nedb-engine &amp;&amp; nedbd</span>, then set the URL in{" "}
+          <Link href="/settings" className="underline">Settings</Link>. {status.error ? `(${status.error})` : ""}
+        </div>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1">
+        {/* Left rail: deploy + database list */}
+        <aside className="flex w-72 flex-col overflow-y-auto border-r border-white/10 bg-black/20">
+          <div className="border-b border-white/10 p-3">
+            <p className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">Deploy</p>
+            {studioDb ? (
+              <button
+                onClick={() => void deploy(studioDb, studioDb.appName)}
+                disabled={busy != null}
+                className="btn-primary mb-2 w-full text-xs disabled:opacity-50"
+              >
+                {busy === studioDb.appName ? "Deploying…" : `Deploy “${studioDb.appName}” (from Studio)`}
+              </button>
+            ) : (
+              <Link href="/studio" className="mb-2 block text-center text-[11px] text-accent-soft hover:text-white">
+                Generate a schema in Studio →
+              </Link>
+            )}
+            <p className="mb-1 mt-2 text-[10px] uppercase tracking-widest text-slate-600">Sample databases</p>
+            {SAMPLE_DATABASES.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => void deploy(s.scaffold, s.label)}
+                disabled={busy != null}
+                className="mb-1 w-full rounded-md px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
+              >
+                {busy === s.label ? "Deploying…" : `+ ${s.label}`}
+              </button>
+            ))}
+          </div>
+
+          <nav className="flex-1 overflow-y-auto p-2">
+            <p className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-widest text-slate-600">
+              Databases {connected ? `(${dbs.length})` : ""}
+            </p>
+            {dbs.map((d) => (
+              <button
+                key={d.name}
+                onClick={() => void select(d.name)}
+                className={
+                  "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left font-mono text-xs transition " +
+                  (selected === d.name ? "bg-accent/20 text-white" : "text-slate-400 hover:bg-white/5 hover:text-white")
+                }
+              >
+                <span className="truncate">◆ {d.name}</span>
+                <span className="ml-2 shrink-0 text-slate-600">{d.rows}</span>
+              </button>
+            ))}
+            {connected && dbs.length === 0 ? (
+              <p className="px-2.5 py-2 text-xs text-slate-600">No databases yet — deploy one above.</p>
+            ) : null}
+          </nav>
+        </aside>
+
+        {/* Main */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {error ? (
+            <div className="mx-4 mt-3 rounded-lg border border-signal-red/30 bg-signal-red/10 px-3 py-2 text-xs text-signal-red">{error}</div>
+          ) : null}
+
+          {!detail ? (
+            <div className="flex h-full items-center justify-center p-10 text-center text-sm text-slate-500">
+              {selected ? "Loading…" : "Select a database, or deploy one from the left."}
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
+                <div className="min-w-0">
+                  <h1 className="truncate text-lg font-bold">{detail.name}</h1>
+                  <div className="flex gap-3 font-mono text-[11px] text-slate-500">
+                    <span>{Object.keys(detail.collections).length} coll</span>
+                    <span>{detail.rows} rows</span>
+                    <span>seq {detail.seq}</span>
+                    <span title={detail.head}>head {detail.head.slice(0, 10)}…</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void onVerify()}
+                    className={
+                      "rounded-full px-2.5 py-1 text-[11px] font-semibold " +
+                      (detail.integrity.ok ? "bg-signal-green/15 text-signal-green" : "bg-signal-red/15 text-signal-red")
+                    }
+                    title="Re-verify the hash-chained log"
+                  >
+                    {detail.integrity.ok ? "● verified" : "● tampered"}
+                  </button>
+                  <div className="flex flex-wrap items-center gap-1 text-xs">
+                    {(["query", "log", "connect"] as Tab[]).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setTab(t)}
+                        className={"rounded-md px-3 py-1 capitalize transition " + (tab === t ? "bg-accent/20 text-white" : "text-slate-400 hover:text-white")}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* collections strip (browse) */}
+              <div className="flex flex-wrap gap-1 border-b border-white/10 px-4 py-2">
+                {Object.entries(detail.collections).map(([c, n]) => (
+                  <button key={c} onClick={() => browse(c)} className="chip" title={`Browse ${c}`}>
+                    {c} <span className="text-slate-600">{n}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-auto">
+                {tab === "query" ? (
+                  live ? (
+                    <QueryConsole key={`${selected}:${seedKey}`} scaffold={live} initialNql={seedNql} runNql={runLive} />
+                  ) : (
+                    <div className="p-6 text-sm text-slate-500">Preparing query console…</div>
+                  )
+                ) : tab === "log" ? (
+                  <LogView log={log} />
+                ) : (
+                  <Connect url={nedbUrl} name={detail.name} onDrop={() => void onDrop()} />
+                )}
+              </div>
+            </>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function LogView({ log }: { log: LogEntry[] }): React.ReactElement {
+  if (!log.length) return <div className="p-6 text-sm text-slate-500">No log entries.</div>;
+  const target = (e: LogEntry): string => {
+    const p = e.payload || {};
+    return [p.coll, p.id].filter(Boolean).join(":") || [p.frm, p.rel, p.to].filter(Boolean).join(" ") || "";
+  };
+  return (
+    <div className="p-4">
+      <table className="w-full border-collapse text-left font-mono text-[12px]">
+        <thead>
+          <tr className="border-b border-white/10 text-slate-400">
+            <th className="px-3 py-2">seq</th><th className="px-3 py-2">op</th>
+            <th className="px-3 py-2">target</th><th className="px-3 py-2">hash</th>
+          </tr>
+        </thead>
+        <tbody>
+          {log.map((e) => (
+            <tr key={e.seq} className="border-b border-white/5 hover:bg-white/5">
+              <td className="px-3 py-1.5 text-slate-400">{e.seq}</td>
+              <td className="px-3 py-1.5 text-accent-soft">{e.op}</td>
+              <td className="px-3 py-1.5 text-slate-200">{target(e)}</td>
+              <td className="px-3 py-1.5 text-slate-600" title={e.hash}>{e.hash.slice(0, 12)}…</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Connect({ url, name, onDrop }: { url: string; name: string; onDrop: () => void }): React.ReactElement {
+  const base = url || "http://127.0.0.1:7070";
+  const curl = `curl -X POST ${base}/v1/databases/${name}/query \\\n  -H 'Content-Type: application/json' \\\n  -d '{"nql":"FROM <collection> LIMIT 10"}'`;
+  const py = `import requests\nr = requests.post("${base}/v1/databases/${name}/query",\n                  json={"nql": "FROM <collection> LIMIT 10"})\nprint(r.json()["rows"])`;
+  return (
+    <div className="space-y-5 p-5">
+      <div>
+        <h3 className="text-xs uppercase tracking-widest text-slate-500">NEDB server</h3>
+        <code className="glass-soft code mt-1 block rounded-lg px-3 py-2 text-sm text-accent-soft">{base}</code>
+        <p className="mt-1 text-xs text-slate-500">Database <span className="font-mono">{name}</span> runs on the nedbd daemon. Configure the URL in <Link href="/settings" className="underline">Settings</Link>.</p>
+      </div>
+      <div>
+        <h3 className="text-xs uppercase tracking-widest text-slate-500">curl</h3>
+        <pre className="glass-soft code mt-1 overflow-auto rounded-lg p-3 text-xs text-slate-200">{curl}</pre>
+      </div>
+      <div>
+        <h3 className="text-xs uppercase tracking-widest text-slate-500">Python</h3>
+        <pre className="glass-soft code mt-1 overflow-auto rounded-lg p-3 text-xs text-slate-200">{py}</pre>
+      </div>
+      <div>
+        <h3 className="text-xs uppercase tracking-widest text-signal-red/80">Danger zone</h3>
+        <button onClick={onDrop} className="mt-1 rounded-lg border border-signal-red/40 px-3 py-1.5 text-xs text-signal-red hover:bg-signal-red/10">
+          Drop this database
+        </button>
+      </div>
+    </div>
+  );
+}

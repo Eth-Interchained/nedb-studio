@@ -10,6 +10,10 @@ dist/
 .env.local
 .env.*.local
 
+# runtime connection override (may contain a token) + local data
+.nedb-studio.json
+nedb-data/
+
 # logs / os
 npm-debug.log*
 yarn-error.log*

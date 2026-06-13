@@ -154,12 +154,20 @@ export default function StudioPage(): React.ReactElement {
                     </button>
                   </div>
                   <Link
+                    href="/databases"
+                    onClick={() => saveActiveDatabase(scaffold)}
+                    className="btn-primary px-3 py-1 text-xs"
+                    title="Deploy this schema as a durable database on the NEDB server"
+                  >
+                    Deploy →
+                  </Link>
+                  <Link
                     href="/query"
                     onClick={() => saveActiveDatabase(scaffold)}
                     className="btn-ghost px-3 py-1 text-xs"
-                    title="Open this database in the full query console"
+                    title="Open this database in the query console (in-browser)"
                   >
-                    Open in Query Console →
+                    Query →
                   </Link>
                 </div>
               </div>

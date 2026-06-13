@@ -178,5 +178,15 @@ export function extractNql(text: string): string {
   if (fence) t = fence[1].trim();
   const lines = t.split("\n").map((l) => l.trim()).filter(Boolean);
   const fromLine = lines.find((l) => /^from\s/i.test(l));
-  return (fromLine ?? lines[0] ?? t).replace(/^["'`]+|["'`;]+$/g, "").trim();
+  let q = (fromLine ?? lines[0] ?? t).trim();
+  // Drop a trailing semicolon (NQL has none) — but NEVER strip a closing string
+  // quote: `FROM users SEARCH "rust"` must keep its final ". Only unwrap when the
+  // WHOLE query is wrapped in a matching quote/backtick pair.
+  q = q.replace(/;+\s*$/, "").trim();
+  while (q.length >= 2) {
+    const a = q[0], b = q[q.length - 1];
+    if ((a === '"' || a === "'" || a === "`") && a === b) q = q.slice(1, -1).trim();
+    else break;
+  }
+  return q;
 }
