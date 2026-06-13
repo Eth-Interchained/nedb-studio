@@ -4,6 +4,7 @@ import { finalizeScaffold } from "../lib/scaffold";
 import { matchTemplate, MOCK_PROVIDERS } from "../lib/mock";
 import { heuristicNlToNql } from "../lib/nql";
 import { validateScaffold } from "../lib/types";
+import { extractBlock } from "./blocks";
 import { chat, defaults, hasCredentials, listProviders } from "./aiassist";
 import {
   extractJson,
@@ -21,6 +22,20 @@ import {
  * gracefully to deterministic mock output, so the studio is always usable.
  */
 export const api = Router();
+
+/**
+ * Pull the scaffold JSON out of a raw completion: KeyStone-Lite sentinel block
+ * (<<<SCAFFOLD>>>…<<<END>>>) first, then a brace-slice fallback (extractJson).
+ * Throws if neither yields parseable JSON (caller falls back to a mock template).
+ */
+function scaffoldJson(raw: string): unknown {
+  const block = extractBlock(raw, "SCAFFOLD") ?? raw;
+  try {
+    return JSON.parse(block);
+  } catch {
+    return extractJson(block);
+  }
+}
 
 api.get("/status", (_req, res) => {
   const d = defaults();
@@ -71,7 +86,7 @@ api.post("/generate", async (req, res) => {
       temperature: 0.2,
       maxTokens: 4000,
     });
-    let candidate = extractJson(raw);
+    let candidate = scaffoldJson(raw);
     let result = validateScaffold(candidate);
 
     // ── Sentinel: validate / repair if the runner output is invalid ─────────
@@ -87,7 +102,7 @@ api.post("/generate", async (req, res) => {
         temperature: 0,
         maxTokens: 4000,
       });
-      candidate = extractJson(repaired);
+      candidate = scaffoldJson(repaired);
       result = validateScaffold(candidate);
     }
 

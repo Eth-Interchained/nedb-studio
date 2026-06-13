@@ -6,7 +6,13 @@
  * Both are sent through AiAssist (provider/model chosen in the UI). The output
  * is always plain JSON — the server parses + validates with the Zod schema in
  * src/lib/types.ts before anything reaches the browser.
+ *
+ * Extraction uses the KeyStone-Lite sentinel technique (see ./blocks): the model
+ * wraps output in <<<SCAFFOLD>>>…<<<END>>> / <<<NQL>>>…<<<END>>>, and we pull the
+ * block verbatim before parsing — robust against fences, prose, and stray chars.
  */
+
+import { extractBlock } from "./blocks";
 
 export const SCAFFOLD_SCHEMA_DOC = `
 Return a single JSON object (no markdown, no prose) matching this TypeScript type:
@@ -51,14 +57,23 @@ Rules:
 - seedData keys MUST be declared collections; give each 2-3 realistic rows with an "id".
 - Add eq indexes for fields you filter on, ordered for fields you sort/range on, search for free-text fields.
 - Keep it focused: 3-7 collections. Use "reference" type for foreign keys.
-- You MAY leave pythonSnippet/nodeSnippet/readmeExport as empty strings; the server generates them.
+- Do NOT output pythonSnippet, nodeSnippet, or readmeExport at all — the server generates them. Putting code/markdown in JSON strings is what breaks the parse; omit those keys entirely.
 `.trim();
 
 export function runnerSystem(): string {
   return [
     "You are a senior database architect for NEDB, an embedded, replay-protected,",
-    "time-traveling database. Turn the user's app description into a clean, normalized",
-    "schema scaffold. Output ONLY the JSON object — no markdown fences, no commentary.",
+    "time-traveling database. Turn the user's app description into a clean, normalized schema scaffold.",
+    "",
+    "OUTPUT FORMAT — wrap the JSON object between these EXACT sentinels and output NOTHING else:",
+    "<<<SCAFFOLD>>>",
+    "{ ...the JSON object... }",
+    "<<<END>>>",
+    "",
+    "RULES:",
+    "1. Output ONLY valid JSON inside the block — no markdown fences, no prose, no trailing commas.",
+    "2. Do NOT include pythonSnippet, nodeSnippet, or readmeExport — the server generates those; code inside JSON is what breaks it.",
+    "3. NEVER truncate or use '...'. Always close with <<<END>>>.",
     "",
     SCAFFOLD_SCHEMA_DOC,
   ].join("\n");
@@ -73,7 +88,12 @@ export function sentinelSystem(): string {
     "You are a strict schema validator and repair pass for NEDB scaffolds.",
     "You are given a candidate JSON scaffold and a list of validation errors.",
     "Return a corrected JSON object that fixes EVERY error while preserving intent.",
-    "Output ONLY the JSON object — no markdown, no commentary.",
+    "",
+    "Wrap the corrected JSON between these EXACT sentinels and output NOTHING else:",
+    "<<<SCAFFOLD>>>",
+    "{ ...the corrected JSON... }",
+    "<<<END>>>",
+    "Valid JSON only inside the block — no markdown, no trailing commas. Omit pythonSnippet/nodeSnippet/readmeExport.",
     "",
     SCAFFOLD_SCHEMA_DOC,
   ].join("\n");
@@ -130,7 +150,11 @@ export function nqlSystem(schema: SchemaLite): string {
     : "- (none)";
   return [
     "You translate a natural-language request into a SINGLE NQL query for the NEDB engine.",
-    "Output ONLY the NQL query on one line — no markdown, no quotes, no prose, no explanation.",
+    "Wrap the one-line query between these EXACT sentinels and output nothing else:",
+    "<<<NQL>>>",
+    'FROM ... WHERE ... ORDER BY ... LIMIT ...',
+    "<<<END>>>",
+    "No markdown, no prose, no quotes around the whole query.",
     "",
     "NQL grammar:",
     'FROM <collection> [AS OF <seq>] [WHERE <field> <op> <value> (AND <field> <op> <value>)*] [SEARCH "<text>"] [ORDER BY <field> [ASC|DESC]] [TRAVERSE <relation>] [LIMIT <n>]',
@@ -149,7 +173,7 @@ export function nqlMessages(prompt: string): Array<{ role: "user"; content: stri
 
 /** Pull a clean single-line NQL query out of a model response. */
 export function extractNql(text: string): string {
-  let t = text.trim();
+  let t = (extractBlock(text, "NQL") ?? text).trim();
   const fence = t.match(/```(?:\w+)?\s*([\s\S]*?)```/);
   if (fence) t = fence[1].trim();
   const lines = t.split("\n").map((l) => l.trim()).filter(Boolean);
