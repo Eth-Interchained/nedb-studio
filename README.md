@@ -77,7 +77,7 @@ apps/nedb-studio/
   app.contract.ts          Portal contract (v1.1)
   vite.config.ts           portalPlugin + /api dev proxy
   server.ts                Express: /api routes + serves dist in prod
-  routes/                  index | studio | databases | query | settings | about | docs  (*.page.tsx)
+  routes/                  index | studio | databases | settings | about | docs  (*.page.tsx)
   src/
     main.tsx               PortalProvider entry
     lib/                   types (Zod), scaffold builders, sample databases, nql, api client

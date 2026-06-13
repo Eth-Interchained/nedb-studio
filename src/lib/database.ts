@@ -13,7 +13,7 @@ export type { SampleDatabase };
 
 const ACTIVE_KEY = "nedb-studio:active-database";
 
-/** Persist the database generated in Studio so /query can open it. */
+/** Persist the database generated in Studio so the Databases console can deploy it. */
 export function saveActiveDatabase(scaffold: NEDBScaffold): void {
   if (typeof window === "undefined") return;
   try {

@@ -129,20 +129,12 @@ export default defineApp({
       seoKeyword: "NEDB schema generator",
     },
     {
-      route: "/query",
-      purpose:
-        "The phpMyAdmin of NEDB: pick a generated or sample database, browse collections and seed data, inspect structure/indexes/relations, and query in plain English — natural language compiles to NQL via AiAssist and runs against the data",
-      audience: "Developers exploring, validating, or querying a NEDB database",
-      primaryAction: "Run Query",
-      seoKeyword: "natural language database query NQL",
-    },
-    {
       route: "/databases",
       purpose:
-        "The deployment console: connect to a running NEDB server (nedbd), deploy a generated scaffold into a durable database, then query it live, inspect integrity and the append-only log, write rows, and view connection details",
-      audience: "Developers deploying and operating live NEDB databases",
+        "The phpMyAdmin of NEDB and deployment console: connect to a running NEDB server (nedbd), deploy a generated scaffold into a durable database, then query it in plain English (natural language → NQL), add and edit rows, browse collections, and inspect integrity, the append-only log, and connection details",
+      audience: "Developers deploying, querying, and operating live NEDB databases",
       primaryAction: "Deploy database",
-      seoKeyword: "deploy NEDB database server",
+      seoKeyword: "deploy and query NEDB database",
     },
     {
       route: "/settings",

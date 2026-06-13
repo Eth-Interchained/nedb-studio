@@ -162,17 +162,9 @@ export default function StudioPage(): React.ReactElement {
                     href="/databases"
                     onClick={() => saveActiveDatabase(scaffold)}
                     className="btn-primary px-3 py-1 text-xs"
-                    title="Deploy this schema as a durable database on the NEDB server"
+                    title="Deploy this schema as a durable database, then query it live"
                   >
                     Deploy →
-                  </Link>
-                  <Link
-                    href="/query"
-                    onClick={() => saveActiveDatabase(scaffold)}
-                    className="btn-ghost px-3 py-1 text-xs"
-                    title="Open this database in the query console (in-browser)"
-                  >
-                    Query →
                   </Link>
                 </div>
               </div>
