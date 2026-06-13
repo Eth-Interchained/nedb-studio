@@ -171,6 +171,55 @@ export function nqlMessages(prompt: string): Array<{ role: "user"; content: stri
   return [{ role: "user", content: `Translate this to one NQL query: ${prompt}` }];
 }
 
+// ── Natural language → action plan (read OR write) ────────────────────────────
+
+export function planSystem(schema: SchemaLite): string {
+  const cols = schema.collections
+    .map((c) => `- ${c.name}(${c.fields.map((f) => f.name).join(", ")})`)
+    .join("\n");
+  return [
+    "You turn ONE natural-language instruction about a database into ONE action.",
+    "",
+    "Reply with ONLY a single JSON object between these EXACT markers, nothing else:",
+    "<<<PLAN>>>",
+    "{...}",
+    "<<<END>>>",
+    "",
+    "The JSON is exactly one of:",
+    '  {"kind":"query","nql":"<one NQL query>"}',
+    '  {"kind":"write","collection":"<c>","id":"<id>","doc":{<field:value,...>},"summary":"<short>"}',
+    '  {"kind":"delete","collection":"<c>","id":"<id>","summary":"<short>"}',
+    '  {"kind":"unsupported","reason":"<why>"}',
+    "",
+    "Rules:",
+    "- WRITE (add/insert/create/new/register/update/set/change/edit/rename) -> \"write\".",
+    "- DELETE (delete/remove/drop a row) -> \"delete\".",
+    "- Otherwise (show/list/find/get/search/count/top/recent/which/what) -> \"query\".",
+    "- For a write: put extracted values into \"doc\" using ONLY declared fields of the chosen collection.",
+    "  Choose \"id\": an explicit id if given, else a clean slug of the name/title (lowercase, hyphens).",
+    "  For an update, include ONLY the fields being changed in \"doc\" (the server merges onto the existing row).",
+    "- NQL grammar: FROM <c> [WHERE field op value (AND field op value)*] [SEARCH \"text\"] [ORDER BY field [ASC|DESC]] [TRAVERSE rel] [LIMIT n]; op in = != < <= > >=; string values in double quotes.",
+    "- Only reference declared collections/fields. Never put code or markdown inside the JSON.",
+    "",
+    "Collections and fields:",
+    cols,
+  ].join("\n");
+}
+
+export function planMessages(prompt: string): Array<{ role: "user"; content: string }> {
+  return [{ role: "user", content: prompt }];
+}
+
+/** Pull the action-plan JSON out of a model response (sentinel block, then brace-slice). */
+export function extractPlan(text: string): unknown {
+  const block = extractBlock(text, "PLAN") ?? text;
+  try {
+    return JSON.parse(block);
+  } catch {
+    return extractJson(block);
+  }
+}
+
 /** Pull a clean single-line NQL query out of a model response. */
 export function extractNql(text: string): string {
   let t = (extractBlock(text, "NQL") ?? text).trim();

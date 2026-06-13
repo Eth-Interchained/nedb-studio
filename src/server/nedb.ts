@@ -52,6 +52,8 @@ export const queryDatabase = (name: string, nql: string) =>
   call(`/v1/databases/${encodeURIComponent(name)}/query`, { method: "POST", body: JSON.stringify({ nql }) });
 export const putRow = (name: string, body: Json) =>
   call(`/v1/databases/${encodeURIComponent(name)}/put`, { method: "POST", body: JSON.stringify(body) });
+export const deleteRow = (name: string, coll: string, id: string) =>
+  call(`/v1/databases/${encodeURIComponent(name)}/rows/${encodeURIComponent(coll)}/${encodeURIComponent(id)}`, { method: "DELETE" });
 export const verifyDatabase = (name: string) => call(`/v1/databases/${encodeURIComponent(name)}/verify`);
 export const logDatabase = (name: string, limit = 50) =>
   call(`/v1/databases/${encodeURIComponent(name)}/log?limit=${limit}`);

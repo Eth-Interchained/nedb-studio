@@ -85,9 +85,34 @@ databases.post("/:name/query", async (req, res) => {
   }
 });
 
+// Write a row. NEDB put is a full replace, so for an existing id we MERGE the
+// patch onto the current row (correct "update" semantics); a new id is an insert.
 databases.post("/:name/rows", async (req, res) => {
+  const name = req.params.name;
+  const { coll, id, doc } = req.body ?? {};
+  if (!coll || id == null || typeof doc !== "object" || doc == null) {
+    res.status(400).json({ error: "coll, id, and doc are required" });
+    return;
+  }
   try {
-    res.json(await nedb.putRow(req.params.name, req.body ?? {}));
+    let merged: Record<string, unknown> = { ...doc, _id: id };
+    try {
+      const safeId = String(id).replace(/"/g, "");
+      const existing = await nedb.queryDatabase(name, `FROM ${coll} WHERE _id = "${safeId}" LIMIT 1`);
+      const row = (existing.rows as Array<Record<string, unknown>> | undefined)?.[0];
+      if (row) merged = { ...row, ...doc, _id: id };
+    } catch {
+      /* no existing row (or query failed) — treat as insert */
+    }
+    res.json(await nedb.putRow(name, { coll, id, doc: merged }));
+  } catch (e) {
+    fail(res, e);
+  }
+});
+
+databases.delete("/:name/rows/:coll/:id", async (req, res) => {
+  try {
+    res.json(await nedb.deleteRow(req.params.name, req.params.coll, req.params.id));
   } catch (e) {
     fail(res, e);
   }

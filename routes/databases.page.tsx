@@ -12,6 +12,8 @@ import {
   getDatabase,
   getSettings,
   listDatabases,
+  putLiveRow,
+  deleteLiveRow,
   queryLiveDatabase,
   verifyDatabase,
   type ConnectionStatus,
@@ -134,6 +136,12 @@ export default function DatabasesPage(): React.ReactElement {
     setDetail(null);
     await refresh();
   }
+
+  // Light refresh after a write — update stats/integrity without resetting the console.
+  const refreshDetail = useCallback(async () => {
+    if (!selected) return;
+    try { setDetail(await getDatabase(selected)); } catch { /* ignore */ }
+  }, [selected]);
 
   const runLive = useCallback(async (nql: string): Promise<QueryResult> => {
     if (!selected) return { rows: [], columns: [], count: 0, error: "no database selected" };
@@ -281,7 +289,17 @@ export default function DatabasesPage(): React.ReactElement {
               <div className="min-h-0 flex-1 overflow-auto">
                 {tab === "query" ? (
                   live ? (
-                    <QueryConsole key={`${selected}:${seedKey}`} scaffold={live} initialNql={seedNql} runNql={runLive} />
+                    <QueryConsole
+                      key={`${selected}:${seedKey}`}
+                      scaffold={live}
+                      initialNql={seedNql}
+                      runNql={runLive}
+                      writeExec={{
+                        put: async (c, id, doc) => { await putLiveRow(selected!, c, id, doc); },
+                        del: async (c, id) => { await deleteLiveRow(selected!, c, id); },
+                      }}
+                      onWritten={() => void refreshDetail()}
+                    />
                   ) : (
                     <div className="p-6 text-sm text-slate-500">Preparing query console…</div>
                   )

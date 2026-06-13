@@ -8,8 +8,11 @@ import { chat, defaults, hasCredentials, listProviders } from "./aiassist";
 import {
   extractJson,
   extractNql,
+  extractPlan,
   nqlMessages,
   nqlSystem,
+  planMessages,
+  planSystem,
   runnerMessages,
   runnerSystem,
   sentinelMessages,
@@ -164,5 +167,44 @@ api.post("/nql", async (req, res) => {
     res.json({ nql, mode: "live" });
   } catch (err) {
     res.status(502).json({ error: "AiAssist NQL compile error", details: [String(err)] });
+  }
+});
+
+// Natural language → action plan: a read (query) OR a write/delete. The plan is
+// previewed/edited in the UI and only executed on explicit confirmation. No mocks.
+api.post("/plan", async (req, res) => {
+  const prompt = String(req.body?.prompt ?? "").trim();
+  const schema = req.body?.schema;
+  if (!prompt || !schema?.collections?.length) {
+    res.status(400).json({ error: "prompt and schema are required" });
+    return;
+  }
+  if (!hasCredentials()) {
+    res.status(503).json({
+      error: "AiAssist API not configured",
+      details: ["Set AIASSIST_API_KEY to interpret natural-language actions."],
+    });
+    return;
+  }
+  try {
+    const raw = await chat({
+      messages: [{ role: "system", content: planSystem(schema) }, ...planMessages(prompt)],
+      temperature: 0,
+      maxTokens: 400,
+    });
+    const plan = extractPlan(raw) as Record<string, unknown> | null;
+    const kind = plan && typeof plan === "object" ? plan.kind : undefined;
+    if (!plan || !["query", "write", "delete", "unsupported"].includes(String(kind))) {
+      res.status(422).json({ error: "Model did not return a valid action", details: [JSON.stringify(plan).slice(0, 200)] });
+      return;
+    }
+    const names = new Set((schema.collections as Array<{ name: string }>).map((c) => c.name));
+    if ((kind === "write" || kind === "delete") && !names.has(String(plan.collection))) {
+      res.status(422).json({ error: `Unknown collection "${plan.collection}"` });
+      return;
+    }
+    res.json({ plan, mode: "live" });
+  } catch (err) {
+    res.status(502).json({ error: "AiAssist plan error", details: [String(err)] });
   }
 });

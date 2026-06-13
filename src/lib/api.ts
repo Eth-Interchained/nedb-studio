@@ -150,6 +150,31 @@ export async function putLiveRow(
   return (await res.json()) as { ok: boolean; seq: number; head: string };
 }
 
+export async function deleteLiveRow(name: string, coll: string, id: string): Promise<{ ok: boolean; seq: number; head: string }> {
+  const res = await fetch(`/api/databases/${encodeURIComponent(name)}/rows/${encodeURIComponent(coll)}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Delete row failed"));
+  return (await res.json()) as { ok: boolean; seq: number; head: string };
+}
+
+// Natural-language action plan: a read (query) OR a write/delete to preview, edit, confirm.
+export type ActionPlan =
+  | { kind: "query"; nql: string }
+  | { kind: "write"; collection: string; id: string; doc: Record<string, unknown>; summary?: string }
+  | { kind: "delete"; collection: string; id: string; summary?: string }
+  | { kind: "unsupported"; reason: string };
+
+export async function planAction(prompt: string, schema: unknown): Promise<ActionPlan> {
+  const res = await fetch("/api/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, schema }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Could not interpret instruction"));
+  return ((await res.json()) as { plan: ActionPlan }).plan;
+}
+
 export async function verifyDatabase(name: string): Promise<{ ok: boolean; seq: number; head: string }> {
   const res = await fetch(`/api/databases/${encodeURIComponent(name)}/verify`);
   if (!res.ok) throw new Error(await errorMessage(res, "Verify failed"));
