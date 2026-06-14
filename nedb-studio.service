@@ -1,0 +1,32 @@
+[Unit]
+Description=NEDB Studio
+Documentation=https://studio.interchained.org
+After=network.target nedbd.service
+Wants=nedbd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/nedb-studio
+
+# Studio reads .env automatically on start — put secrets there, not here.
+# .env should contain at minimum: AIASSIST_API_KEY, NEDB_URL, PORT
+EnvironmentFile=/root/nedb-studio/.env
+
+ExecStart=/usr/bin/node /root/nedb-studio/node_modules/.bin/tsx server.ts
+# Or if already built:
+# ExecStart=/usr/bin/node -e "process.env.NODE_ENV='production'; require('./dist/server.js')"
+# Simpler after npm run build:
+# ExecStart=/usr/bin/env node server.ts
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nedb-studio
+
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

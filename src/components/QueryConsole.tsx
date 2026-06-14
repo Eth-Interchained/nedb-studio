@@ -64,8 +64,14 @@ export function QueryConsole({
       if (out.kind === "query" && out.nql) {
         setNql(out.nql);
         setResult(await exec(out.nql));
-      } else if (out.kind === "sql_write") {
-        setNotice(`Write detected (${out.op}). Deploy a live database in Databases to execute writes.`);
+      } else if (out.kind === "sql_write" && out.sql) {
+        // Route SQL writes through the NL write preview — same editable confirm flow
+        const sqlPlan = await planAction(
+          `${out.op} row via SQL: ${out.sql}`,
+          { collections: scaffold.collections, relations: scaffold.relations, indexes: scaffold.indexes }
+        );
+        setPlan(sqlPlan);
+        loadDraft(sqlPlan);
       } else {
         setNotice(`Could not translate to NQL — ${JSON.stringify(out)}`);
       }
@@ -296,19 +302,79 @@ export function QueryConsole({
         ) : result.rows.length === 0 ? (
           <div className="p-4 text-sm text-slate-400">0 rows.{result.note ? ` ${result.note}` : ""}</div>
         ) : (
-          <ResultsTable result={result} />
+          <ResultsTable
+            result={result}
+            onCellEdit={writeExec ? (row, col, val) => {
+              const id = String(row._id ?? row.id ?? "");
+              if (!id) return;
+              const coll = String(result.note?.match(/FROM (\w+)/)?.[1] ?? "");
+              if (!coll) return;
+              void writeExec.put(coll, id, { ...row, [col]: val });
+              setNotice(`✓ Updated ${col} on ${id}`);
+              onWritten?.();
+            } : undefined}
+          />
         )}
       </div>
     </div>
   );
 }
 
-function ResultsTable({ result }: { result: QueryResult }): React.ReactElement {
+function EditableCell({ value, onSave }: { value: string; onSave: (v: string) => void }): React.ReactElement {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(value);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  function start(e: React.MouseEvent | React.TouchEvent) {
+    e.stopPropagation();
+    setDraft(value);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 10);
+  }
+  function commit() {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+        className="w-full min-w-[80px] bg-accent/10 border border-accent/40 rounded px-2 py-0.5 font-mono text-[12px] text-white outline-none"
+        autoFocus
+      />
+    );
+  }
+  return (
+    <span
+      onClick={start}
+      onTouchEnd={start}
+      title="Tap to edit"
+      className="block cursor-text select-none truncate rounded px-1 py-0.5 hover:bg-white/10 active:bg-accent/15 transition"
+      style={{ minWidth: 24, WebkitTapHighlightColor: "transparent" }}
+    >
+      {value || <span className="text-slate-600">—</span>}
+    </span>
+  );
+}
+
+function ResultsTable({
+  result,
+  onCellEdit,
+}: {
+  result: QueryResult;
+  onCellEdit?: (row: Record<string, unknown>, col: string, newValue: string) => void;
+}): React.ReactElement {
   const cell = (v: unknown): string => (v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
   return (
     <div className="overflow-auto">
       <div className="px-3 pt-3 text-[11px] text-slate-500">
         {result.count} row{result.count === 1 ? "" : "s"}{result.note ? ` · ${result.note}` : ""}
+        {onCellEdit ? <span className="ml-2 text-slate-600">· tap any cell to edit</span> : null}
       </div>
       <table className="w-full border-collapse text-left font-mono text-[12px]">
         <thead>
@@ -322,8 +388,12 @@ function ResultsTable({ result }: { result: QueryResult }): React.ReactElement {
           {result.rows.slice(0, 100).map((row, i) => (
             <tr key={i} className="border-b border-white/5 hover:bg-white/5">
               {result.columns.map((c) => (
-                <td key={c} className="max-w-[260px] truncate px-3 py-1.5 text-slate-200" title={cell(row[c])}>
-                  {cell(row[c])}
+                <td key={c} className="max-w-[260px] px-2 py-1" title={cell(row[c])}>
+                  {onCellEdit && c !== "_id" ? (
+                    <EditableCell value={cell(row[c])} onSave={(v) => onCellEdit(row, c, v)} />
+                  ) : (
+                    <span className="truncate text-slate-200 block px-1">{cell(row[c])}</span>
+                  )}
                 </td>
               ))}
             </tr>

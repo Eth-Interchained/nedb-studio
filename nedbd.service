@@ -1,0 +1,37 @@
+[Unit]
+Description=NEDB Server Daemon (nedbd)
+Documentation=https://nedb.aiassist.net/reference.html
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/nedb
+
+# Generate a TMK once: python3 -c "import os; print(os.urandom(32).hex())"
+# Then set it here or in an EnvironmentFile.
+# NEVER commit a real key to git — use EnvironmentFile=/etc/nedb/secrets instead.
+# EnvironmentFile=/etc/nedb/secrets
+
+Environment=NEDBD_HOST=127.0.0.1
+Environment=NEDBD_PORT=7070
+Environment=NEDBD_DATA=/root/nedb/nedb-data
+# Environment=NEDBD_TOKEN=your-bearer-token
+# Environment=NEDB_TMK=your-64-char-hex-key
+Environment=NEDBD_RESP2_PORT=6379
+Environment=NEDBD_CHECKPOINT_INTERVAL=60
+
+ExecStart=/usr/local/bin/nedbd
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nedbd
+
+# Give nedbd a clean shutdown window for checkpointing
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
