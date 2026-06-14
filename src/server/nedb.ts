@@ -119,7 +119,28 @@ export async function deployScaffold(name: string, scaffold: NEDBScaffold): Prom
   let candidate = slug(name);
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      return await call("/v1/databases", { method: "POST", body: JSON.stringify({ name: candidate, init }) });
+      const result = await call("/v1/databases", { method: "POST", body: JSON.stringify({ name: candidate, init }) });
+      // Persist the full schema structure as a special document so the Databases page
+      // can reconstruct the SchemaGraph after a restart or from a different browser.
+      // Stored in collection "_studio", id "schema" — just another row in the AOF.
+      const schemaDoc = {
+        coll: "_studio",
+        id: "schema",
+        doc: {
+          _id: "schema",
+          appName: scaffold.appName,
+          description: scaffold.description,
+          collections: scaffold.collections,
+          relations: scaffold.relations,
+          indexes: scaffold.indexes,
+          nqlExamples: scaffold.nqlExamples,
+        },
+      };
+      await call(`/v1/databases/${encodeURIComponent(candidate)}/put`, {
+        method: "POST",
+        body: JSON.stringify(schemaDoc),
+      }).catch(() => { /* non-fatal — graph just won't show if this fails */ });
+      return result;
     } catch (e) {
       if (/already exists/i.test((e as Error).message) && attempt < 4) {
         candidate = `${slug(name)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -129,4 +150,30 @@ export async function deployScaffold(name: string, scaffold: NEDBScaffold): Prom
     }
   }
   throw new Error("could not allocate a unique database name");
+}
+
+/** Load the persisted scaffold from a deployed database (_studio/schema). Returns null if not found. */
+export async function loadDeployedSchema(name: string): Promise<NEDBScaffold | null> {
+  try {
+    const result = await call(`/v1/databases/${encodeURIComponent(name)}/query`, {
+      method: "POST",
+      body: JSON.stringify({ nql: "FROM _studio WHERE _id = \"schema\" LIMIT 1" }),
+    }) as { rows?: Array<Record<string, unknown>> };
+    const row = result.rows?.[0];
+    if (!row) return null;
+    return {
+      appName: String(row.appName ?? name),
+      description: String(row.description ?? ""),
+      collections: (row.collections as NEDBScaffold["collections"]) ?? [],
+      relations: (row.relations as NEDBScaffold["relations"]) ?? [],
+      indexes: (row.indexes as NEDBScaffold["indexes"]) ?? [],
+      nqlExamples: (row.nqlExamples as string[]) ?? [],
+      seedData: {},
+      pythonSnippet: "",
+      nodeSnippet: "",
+      readmeExport: "",
+    };
+  } catch {
+    return null;
+  }
 }

@@ -3,6 +3,8 @@ import { Head, Link } from "@interchained/portal-react";
 
 import { Nav } from "../src/components/Nav";
 import { QueryConsole } from "../src/components/QueryConsole";
+import { SchemaGraph } from "../src/components/SchemaGraph";
+import type { NEDBScaffold } from "../src/lib/types";
 import type { QueryResult } from "../src/lib/nql";
 import {
   databaseLog,
@@ -10,6 +12,7 @@ import {
   dropDatabase,
   getConnectionStatus,
   getDatabase,
+  getDeployedSchema,
   getSettings,
   listDatabases,
   putLiveRow,
@@ -30,7 +33,7 @@ export const intent = {
   seoKeyword: "deploy NEDB database server",
 };
 
-type Tab = "query" | "log" | "connect";
+type Tab = "schema" | "query" | "log" | "connect";
 
 const pageSize = (): number =>
   Number((typeof window !== "undefined" && window.localStorage.getItem("nedb-studio:pageSize")) || 100);
@@ -49,6 +52,7 @@ export default function DatabasesPage(): React.ReactElement {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<DbDetail | null>(null);
   const [live, setLive] = useState<NEDBScaffold | null>(null);
+  const [persistedScaffold, setPersistedScaffold] = useState<NEDBScaffold | null>(null);
   const [tab, setTab] = useState<Tab>("query");
   const [seedNql, setSeedNql] = useState("");
   const [seedKey, setSeedKey] = useState(0);
@@ -73,12 +77,15 @@ export default function DatabasesPage(): React.ReactElement {
 
   const select = useCallback(async (name: string) => {
     setSelected(name);
-    setTab("query");
+    setTab("schema");
     setSeedNql("");
     setDetail(null);
     setLive(null);
+    setPersistedScaffold(null);
     try {
       const d = await getDatabase(name);
+      // Load the persisted schema (stored in _studio/schema at deploy time) for the graph
+      getDeployedSchema(name).then(setPersistedScaffold).catch(() => {});
       setDetail(d);
       // Synthesize a schema from the live DB (collection names + sampled fields)
       // so NL→NQL has something to work with; queries run on the real engine.
@@ -264,13 +271,13 @@ export default function DatabasesPage(): React.ReactElement {
                     {detail.integrity.ok ? "● verified" : "● tampered"}
                   </button>
                   <div className="flex flex-wrap items-center gap-1 text-xs">
-                    {(["query", "log", "connect"] as Tab[]).map((t) => (
+                    {(["schema", "query", "log", "connect"] as Tab[]).map((t) => (
                       <button
                         key={t}
                         onClick={() => setTab(t)}
                         className={"rounded-md px-3 py-1 capitalize transition " + (tab === t ? "bg-accent/20 text-white" : "text-slate-400 hover:text-white")}
                       >
-                        {t}
+                        {t === "query" ? "Query (NL → NQL)" : t}
                       </button>
                     ))}
                   </div>
@@ -287,7 +294,22 @@ export default function DatabasesPage(): React.ReactElement {
               </div>
 
               <div className="min-h-0 flex-1 overflow-auto">
-                {tab === "query" ? (
+                {tab === "schema" ? (
+                  persistedScaffold ? (
+                    <SchemaGraph scaffold={persistedScaffold} />
+                  ) : live ? (
+                    <div className="flex h-full flex-col">
+                      <div className="px-4 pt-3 text-[11px] text-signal-amber">
+                        Schema graph is based on sampled data — deploy this database from Studio to see the full structure.
+                      </div>
+                      <div className="min-h-0 flex-1">
+                        <SchemaGraph scaffold={live} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-sm text-slate-500">Loading schema…</div>
+                  )
+                ) : tab === "query" ? (
                   live ? (
                     <QueryConsole
                       key={`${selected}:${seedKey}`}

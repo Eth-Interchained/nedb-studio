@@ -190,6 +190,13 @@ export async function planAction(prompt: string, schema: unknown): Promise<Actio
   return ((await res.json()) as { plan: ActionPlan }).plan;
 }
 
+export async function getDeployedSchema(name: string): Promise<import("./types").NEDBScaffold | null> {
+  const res = await fetch(`/api/databases/${encodeURIComponent(name)}/schema`);
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  return (await res.json()) as import("./types").NEDBScaffold;
+}
+
 export async function verifyDatabase(name: string): Promise<{ ok: boolean; seq: number; head: string }> {
   const res = await fetch(`/api/databases/${encodeURIComponent(name)}/verify`);
   if (!res.ok) throw new Error(await errorMessage(res, "Verify failed"));

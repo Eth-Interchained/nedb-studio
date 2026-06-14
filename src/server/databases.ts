@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { validateScaffold } from "../lib/types";
 import * as nedb from "./nedb";
+import type { NEDBScaffold } from "../lib/types";
 
 /**
  * /api/databases — thin proxy from the browser to the NEDB server (nedbd). The
@@ -113,6 +114,16 @@ databases.post("/:name/rows", async (req, res) => {
 databases.delete("/:name/rows/:coll/:id", async (req, res) => {
   try {
     res.json(await nedb.deleteRow(req.params.name, req.params.coll, req.params.id));
+  } catch (e) {
+    fail(res, e);
+  }
+});
+
+databases.get("/:name/schema", async (req, res) => {
+  try {
+    const schema = await nedb.loadDeployedSchema(req.params.name);
+    if (!schema) { res.status(404).json({ error: "schema not found" }); return; }
+    res.json(schema);
   } catch (e) {
     fail(res, e);
   }
