@@ -24,6 +24,19 @@ function coerce(v: string): unknown {
   return v;
 }
 
+// Coerce an edited cell value to match the original field's type, so editing a
+// string field never silently turns it into a number (e.g. a zip "01234"), while
+// number/boolean columns stay typed. Falls back to coerce() for new/null fields.
+function coerceLike(orig: unknown, v: string): unknown {
+  if (typeof orig === "number") {
+    const n = Number(v);
+    return v.trim() !== "" && Number.isFinite(n) ? n : v;
+  }
+  if (typeof orig === "boolean") return v === "true" || v === "1";
+  if (orig == null) return coerce(v);
+  return v; // preserve strings verbatim
+}
+
 export function QueryConsole({
   scaffold,
   initialNql = "",
@@ -371,12 +384,21 @@ export function QueryConsole({
             result={result}
             onCellEdit={writeExec ? (row, col, val) => {
               const id = String(row._id ?? row.id ?? "");
-              if (!id) return;
-              const coll = String(result.note?.match(/FROM (\w+)/)?.[1] ?? "");
-              if (!coll) return;
-              void writeExec.put(coll, id, { ...row, [col]: val });
-              setNotice(`✓ Updated ${col} on ${id}`);
-              onWritten?.();
+              if (!id) { setNotice("Error: this row has no _id — can't edit it."); return; }
+              // Resolve the collection from the executed query (result.note is "seq N").
+              const coll = nql.match(/FROM\s+([A-Za-z_]\w*)/i)?.[1] ?? "";
+              if (!coll) { setNotice("Error: couldn't resolve the collection — run a FROM <collection> query first."); return; }
+              const updated = { ...row, [col]: coerceLike(row[col], val) };
+              void writeExec.put(coll, id, updated)
+                .then(() => {
+                  // Optimistically reflect the saved value in the table.
+                  setResult((prev) => prev
+                    ? { ...prev, rows: prev.rows.map((r) => (String(r._id ?? r.id ?? "") === id ? updated : r)) }
+                    : prev);
+                  setNotice(`✓ Updated ${col} on ${id}`);
+                  onWritten?.();
+                })
+                .catch((e) => setNotice(`Error: ${String(e instanceof Error ? e.message : e)}`));
             } : undefined}
           />
         )}
