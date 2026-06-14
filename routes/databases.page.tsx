@@ -18,6 +18,7 @@ import {
   putLiveRow,
   deleteLiveRow,
   queryLiveDatabase,
+  mongoLiveQuery,
   verifyDatabase,
   type ConnectionStatus,
   type DbDetail,
@@ -211,6 +212,11 @@ export default function DatabasesPage(): React.ReactElement {
     try { setDetail(await getDatabase(selected)); } catch { /* ignore */ }
   }, [selected]);
 
+  const runMongoLive = useCallback(async (body: Record<string, unknown>) => {
+    if (!selected) throw new Error("no database selected");
+    return mongoLiveQuery(selected, body);
+  }, [selected]);
+
   const runLive = useCallback(async (nql: string): Promise<QueryResult> => {
     if (!selected) return { rows: [], columns: [], count: 0, error: "no database selected" };
     const r = await queryLiveDatabase(selected, nql);
@@ -377,6 +383,7 @@ export default function DatabasesPage(): React.ReactElement {
                       scaffold={live}
                       initialNql={seedNql}
                       runNql={runLive}
+                      runMongo={runMongoLive}
                       writeExec={{
                         put: async (c, id, doc) => { await putLiveRow(selected!, c, id, doc); },
                         del: async (c, id) => { await deleteLiveRow(selected!, c, id); },

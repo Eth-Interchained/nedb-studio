@@ -57,6 +57,8 @@ export const deleteRow = (name: string, coll: string, id: string) =>
 export const verifyDatabase = (name: string) => call(`/v1/databases/${encodeURIComponent(name)}/verify`);
 export const logDatabase = (name: string, limit = 50) =>
   call(`/v1/databases/${encodeURIComponent(name)}/log?limit=${limit}`);
+export const mongoQuery = (name: string, body: Json) =>
+  call(`/v1/databases/${encodeURIComponent(name)}/mongo`, { method: "POST", body: JSON.stringify(body) });
 
 export function slug(s: string): string {
   return (s || "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "db";

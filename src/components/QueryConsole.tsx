@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { NEDBScaffold } from "../lib/types";
 import { executeNql, type QueryResult } from "../lib/nql";
-import { planAction, putBatch, translateQuery, type ActionPlan, type BatchRow } from "../lib/api";
+import { planAction, putBatch, translateQuery, mongoLiveQuery, type ActionPlan, type BatchRow } from "../lib/api";
 
-type Lang = "nql" | "sql" | "redis";
+type Lang = "nql" | "sql" | "redis" | "mongo";
 
 /**
  * The two-way console: ask in plain English and the model plans an ACTION — a
@@ -41,12 +41,15 @@ export function QueryConsole({
   scaffold,
   initialNql = "",
   runNql,
+  runMongo: runMongoFn,
   writeExec,
   onWritten,
 }: {
   scaffold: NEDBScaffold;
   initialNql?: string;
   runNql?: (nql: string) => Promise<QueryResult>;
+  /** Live Mongo executor — provided when a live database is selected. */
+  runMongo?: (body: Record<string, unknown>) => Promise<Record<string, unknown>>;
   writeExec?: WriteExec;
   onWritten?: () => void;
 }): React.ReactElement {
@@ -55,6 +58,10 @@ export function QueryConsole({
   const [nl, setNl] = useState("");
   const [nql, setNql] = useState(initialNql);
   const [rawInput, setRawInput] = useState(""); // SQL or Redis raw input
+  const [mongoInput, setMongoInput] = useState(
+    `{\n  "collection": "${scaffold.collections[0]?.name ?? "items"}",\n  "op": "find",\n  "filter": {},\n  "limit": 50\n}`,
+  );
+  const [mongoError, setMongoError] = useState<string | null>(null);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState(false);
@@ -147,6 +154,39 @@ export function QueryConsole({
     if (nql.trim()) setResult(await exec(nql));
   }
 
+  async function runMongo(): Promise<void> {
+    setMongoError(null);
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(mongoInput) as Record<string, unknown>;
+    } catch (e) {
+      setMongoError(`JSON parse error: ${(e as Error).message}`);
+      return;
+    }
+    if (!runMongoFn) {
+      setMongoError("Mongo queries require a live database — deploy first on the Databases page.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const raw = await runMongoFn(body);
+      const rows: Record<string, unknown>[] =
+        (raw.rows as Record<string, unknown>[] | undefined) ??
+        (raw.doc ? [raw.doc as Record<string, unknown>] : []);
+      const columns: string[] = [];
+      for (const row of rows) for (const k of Object.keys(row)) if (!columns.includes(k)) columns.push(k);
+      setResult({
+        rows, columns,
+        count: typeof raw.count === "number" ? raw.count : rows.length,
+        note: `mongo·${String(body.op)}·seq ${raw.seq ?? "?"}`,
+      });
+    } catch (e) {
+      setMongoError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function commit(): Promise<void> {
     if (!plan || !writeExec) return;
     setCommitting(true);
@@ -180,9 +220,10 @@ export function QueryConsole({
   }
 
   const LANGS: Array<{ id: Lang; label: string; hint: string }> = [
-    { id: "nql", label: "NQL", hint: "NEDB Query Language" },
-    { id: "sql", label: "SQL", hint: "SELECT / INSERT / UPDATE / DELETE" },
+    { id: "nql",   label: "NQL",   hint: "NEDB Query Language" },
+    { id: "sql",   label: "SQL",   hint: "SELECT / INSERT / UPDATE / DELETE" },
     { id: "redis", label: "Redis", hint: "GET / HGETALL / SMEMBERS / …" },
+    { id: "mongo", label: "Mongo", hint: "MongoDB-compatible find / aggregate / update / delete" },
   ];
 
   return (
@@ -355,8 +396,67 @@ export function QueryConsole({
         </div>
       ) : null}
 
-      {/* compiled NQL — the verifiable, editable intermediate (for reads) */}
-      <div className="flex items-center gap-2">
+      {/* Mongo JSON editor */}
+      {lang === "mongo" ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-1">
+            {scaffold.collections.slice(0, 6).map((c) => (
+              <button
+                key={c.name}
+                className="chip"
+                onClick={() => {
+                  setMongoInput(JSON.stringify({ collection: c.name, op: "find", filter: {}, limit: 50 }, null, 2));
+                  setMongoError(null);
+                }}
+              >
+                {c.name}
+              </button>
+            ))}
+            <button className="chip" onClick={() => {
+              let body: Record<string, unknown> = {};
+              try { body = JSON.parse(mongoInput) as Record<string, unknown>; } catch { /**/ }
+              setMongoInput(JSON.stringify({ ...body, op: "find", filter: {}, limit: 50 }, null, 2));
+            }}>find</button>
+            <button className="chip" onClick={() => {
+              let body: Record<string, unknown> = {};
+              try { body = JSON.parse(mongoInput) as Record<string, unknown>; } catch { /**/ }
+              setMongoInput(JSON.stringify({ ...body, op: "aggregate", pipeline: [{ $group: { _id: null, count: { $sum: 1 } } }] }, null, 2));
+            }}>aggregate</button>
+            <button className="chip" onClick={() => {
+              let body: Record<string, unknown> = {};
+              try { body = JSON.parse(mongoInput) as Record<string, unknown>; } catch { /**/ }
+              setMongoInput(JSON.stringify({ ...body, op: "count", filter: {} }, null, 2));
+            }}>count</button>
+          </div>
+          <div className="relative">
+            <textarea
+              value={mongoInput}
+              onChange={(e) => { setMongoInput(e.target.value); setMongoError(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void runMongo(); } }}
+              rows={8}
+              spellCheck={false}
+              className="glass-soft code w-full resize-y rounded-lg px-3 py-2 text-sm text-slate-100 outline-none focus:border-accent/50"
+              placeholder={`{"collection":"users","op":"find","filter":{"status":"active"},"sort":{"age":-1},"limit":10}`}
+            />
+          </div>
+          {mongoError ? (
+            <div className="rounded-lg bg-signal-red/10 px-3 py-2 text-xs text-signal-red">{mongoError}</div>
+          ) : null}
+          <div className="flex items-center gap-2">
+            <button onClick={() => void runMongo()} disabled={busy} className="btn-primary disabled:opacity-50">
+              {busy ? "Running…" : "Run Mongo"}
+            </button>
+            <span className="text-[11px] text-slate-600">Ctrl+Enter</span>
+            {!runMongoFn ? <span className="text-[11px] text-signal-amber">Deploy on Databases page to run.</span> : null}
+          </div>
+          <div className="text-[10px] text-slate-600 leading-relaxed">
+            ops: <span className="text-slate-500">find · findOne · count · distinct · aggregate · insertOne · updateOne · updateMany · deleteOne · deleteMany · replaceOne</span>
+          </div>
+        </div>
+      ) : null}
+
+      {/* compiled NQL — the verifiable, editable intermediate (for reads; hidden in Mongo mode) */}
+      <div className={lang === "mongo" ? "hidden" : "flex items-center gap-2"}>
         <span className="font-mono text-[11px] uppercase tracking-wide text-slate-500">NQL</span>
         <input
           value={nql}

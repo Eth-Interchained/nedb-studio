@@ -179,6 +179,19 @@ export async function putBatch(
   return (await res.json()) as { results: Array<{ op: string; id?: string; seq: number }>; seq: number; head: string };
 }
 
+export async function mongoLiveQuery(
+  name: string,
+  body: Record<string, unknown>,
+): Promise<{ rows?: unknown[]; count?: number; doc?: unknown; values?: unknown[]; [k: string]: unknown }> {
+  const res = await fetch(`/api/databases/${encodeURIComponent(name)}/mongo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Mongo query failed"));
+  return (await res.json()) as { rows?: unknown[]; count?: number; [k: string]: unknown };
+}
+
 export async function deleteLiveRow(name: string, coll: string, id: string): Promise<{ ok: boolean; seq: number; head: string }> {
   const res = await fetch(`/api/databases/${encodeURIComponent(name)}/rows/${encodeURIComponent(coll)}/${encodeURIComponent(id)}`, {
     method: "DELETE",

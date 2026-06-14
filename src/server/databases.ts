@@ -152,6 +152,14 @@ databases.get("/:name/schema", async (req, res) => {
   }
 });
 
+databases.post("/:name/mongo", async (req, res) => {
+  try {
+    res.json(await nedb.mongoQuery(req.params.name, req.body ?? {}));
+  } catch (e) {
+    fail(res, e);
+  }
+});
+
 databases.get("/:name/verify", async (req, res) => {
   try {
     res.json(await nedb.verifyDatabase(req.params.name));
