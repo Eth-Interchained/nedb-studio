@@ -329,13 +329,11 @@ export default function DatabasesPage(): React.ReactElement {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => void onVerify()}
-                    className={
-                      "rounded-full px-2.5 py-1 text-[11px] font-semibold " +
-                      (detail.integrity.ok ? "bg-signal-green/15 text-signal-green" : "bg-signal-red/15 text-signal-red")
-                    }
+                    className={detail.integrity.ok ? "pill-verified" : "pill-error"}
                     title="Re-verify the hash-chained log"
                   >
-                    {detail.integrity.ok ? "● verified" : "● tampered"}
+                    <span>{detail.integrity.ok ? "●" : "●"}</span>
+                    {detail.integrity.ok ? "verified" : "tampered"}
                   </button>
                   <div className="flex flex-wrap items-center gap-1 text-xs">
                     {(["schema", "query", "log", "connect"] as Tab[]).map((t) => (

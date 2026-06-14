@@ -2,100 +2,303 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEDB Studio — Dual-theme design system
+   ───────────────────────────────────────────────────────────────────────────
+   V1 "Indigo Glass"  The classic — deep indigo, glass-morphism, familiar dark.
+   V2 "Void"          Elevated — pure black, electric cyan, Space Grotesk display,
+                      precision borders, no blur. The statement piece.
+   ───────────────────────────────────────────────────────────────────────────
+   All color tokens are CSS custom properties. Tailwind utilities that reference
+   `--accent` / `--ink-*` switch automatically when the theme changes.
+   Built by INTERCHAINED LLC × Claude Sonnet 4.6. Signed.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── V1 tokens ──────────────────────────────────────────────────────────── */
+:root,
+[data-theme="v1"] {
   color-scheme: dark;
+
+  /* Tailwind color table — RGB triplets for opacity-modifier compatibility */
+  --ink-950:      6   8  15;
+  --ink-900:     10  14  26;
+  --ink-850:     14  19  34;
+  --ink-800:     20  26  46;
+  --ink-700:     30  39  64;
+  --accent:      99 102 241;
+  --accent-soft: 129 140 248;
+  --accent-glow: 167 139 250;
+
+  /* Surface hierarchy */
+  --bg:           #06080f;
+  --surface-1:    rgba(14, 19, 34, 0.75);
+  --surface-2:    rgba(20, 26, 46, 0.55);
+  --border-1:     rgba(99, 102, 241, 0.16);
+  --border-2:     rgba(148, 163, 184, 0.10);
+
+  /* Components */
+  --btn-text:       #ffffff;
+  --glass-blur:     blur(14px);
+  --radius-card:    0.875rem;
+  --shadow-accent:  rgba(99, 102, 241, 0.65);
+
+  /* Background */
+  --bg-pattern:    radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.065) 1px, transparent 0);
+  --bg-size:       40px 40px;
+
+  /* Typography */
+  --font-display:  "Inter", system-ui, sans-serif;
+
+  /* Scrollbar */
+  --thumb:  rgba(99, 102, 241, 0.28);
+  --thumb-h:rgba(99, 102, 241, 0.50);
 }
 
-* {
-  box-sizing: border-box;
+/* ── V2 "Void" tokens ───────────────────────────────────────────────────── */
+[data-theme="v2"] {
+  color-scheme: dark;
+
+  --ink-950:      0   0   4;
+  --ink-900:      5   5  12;
+  --ink-850:     10  10  20;
+  --ink-800:     16  16  30;
+  --ink-700:     24  24  44;
+  --accent:       0 212 255;    /* electric cyan */
+  --accent-soft:  34 211 238;
+  --accent-glow: 103 232 249;
+
+  --bg:           #000004;
+  --surface-1:    #0a0a14;
+  --surface-2:    #0f0f1c;
+  --border-1:     rgba(0, 212, 255, 0.13);
+  --border-2:     rgba(255, 255, 255, 0.055);
+
+  --btn-text:       #000004;
+  --glass-blur:     blur(0px);
+  --radius-card:    0.5rem;
+  --shadow-accent:  rgba(0, 212, 255, 0.45);
+
+  --bg-pattern:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(0, 212, 255, 0.055), transparent),
+    radial-gradient(ellipse 50% 30% at 90% 110%, rgba(99, 102, 241, 0.04), transparent);
+  --bg-size:       auto;
+
+  --font-display:  "Space Grotesk", "Inter", system-ui, sans-serif;
+
+  --thumb:  rgba(0, 212, 255, 0.20);
+  --thumb-h:rgba(0, 212, 255, 0.42);
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+/* ── Base reset ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; }
 
 body {
   margin: 0;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
-  background-color: #06080f;
-  background-image: radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.07) 1px, transparent 0);
-  background-size: 40px 40px;
+  background-color: var(--bg);
+  background-image: var(--bg-pattern);
+  background-size: var(--bg-size);
+  background-attachment: fixed;
   color: #e2e8f0;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
+/* ── V2 display font on headings ────────────────────────────────────────── */
+[data-theme="v2"] h1,
+[data-theme="v2"] h2,
+[data-theme="v2"] h3,
+[data-theme="v2"] h4 {
+  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  letter-spacing: -0.025em;
+}
+
+/* ── Selection ──────────────────────────────────────────────────────────── */
 ::selection {
-  background: rgba(99, 102, 241, 0.4);
+  background: rgba(var(--accent) / 0.32);
   color: #fff;
 }
 
-/* thin devtool scrollbars */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.25);
+  background: var(--thumb);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.45);
+  background: var(--thumb-h);
   background-clip: content-box;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Component layer — uses CSS vars so both themes work without per-theme classes
+   ═══════════════════════════════════════════════════════════════════════════ */
 @layer components {
+
+  /* Glass card */
   .glass {
-    background: rgba(14, 19, 34, 0.7);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(99, 102, 241, 0.14);
+    background: var(--surface-1);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-card);
   }
+
+  /* Softer surface */
   .glass-soft {
-    background: rgba(20, 26, 46, 0.5);
-    border: 1px solid rgba(148, 163, 184, 0.1);
+    background: var(--surface-2);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-card);
   }
+
+  /* Primary CTA */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition;
-    box-shadow: 0 8px 30px -10px rgba(99, 102, 241, 0.7);
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold transition-all duration-150;
+    border-radius: 0.5rem;
+    background: rgb(var(--accent));
+    color: var(--btn-text);
+    box-shadow: 0 6px 28px -8px var(--shadow-accent);
   }
   .btn-primary:hover {
-    @apply bg-accent-soft;
+    filter: brightness(1.15) saturate(1.1);
+    box-shadow: 0 8px 36px -8px var(--shadow-accent);
+    transform: translateY(-1px);
   }
+  .btn-primary:active { transform: translateY(0); }
+
+  /* Ghost / outline button */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-5 py-2.5 text-sm font-medium text-slate-200 transition hover:border-accent/50 hover:text-white;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-5 py-2.5 text-sm font-medium text-slate-200 transition-all duration-150 hover:text-white;
   }
+  .btn-ghost:hover {
+    border-color: rgba(var(--accent) / 0.45);
+    background: rgba(var(--accent) / 0.06);
+  }
+
+  /* Chip / tag */
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300 transition hover:border-accent/50 hover:text-white;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[.04] px-3 py-1 text-xs font-medium text-slate-300 transition-all duration-150 hover:text-white;
   }
-  .code {
-    @apply font-mono text-[13px] leading-relaxed;
+  .chip:hover {
+    border-color: rgba(var(--accent) / 0.42);
+    background: rgba(var(--accent) / 0.07);
+    color: rgb(var(--accent-soft));
   }
+
+  /* Monospace block */
+  .code { @apply font-mono text-[13px] leading-relaxed; }
+
+  /* ── V2-only enhancements ──────────────────────────────────────────────── */
+  [data-theme="v2"] .glass {
+    border-color: var(--border-1);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  [data-theme="v2"] .glass:hover {
+    border-color: rgba(var(--accent) / 0.22);
+    box-shadow: 0 0 32px -8px rgba(var(--accent) / 0.09);
+  }
+
+  /* V2 stat / badge pills */
+  .pill-verified {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
+    background: rgba(52, 211, 153, 0.12);
+    color: #34d399;
+    border: 1px solid rgba(52, 211, 153, 0.25);
+  }
+  [data-theme="v2"] .pill-verified {
+    box-shadow: 0 0 14px -4px rgba(52, 211, 153, 0.30);
+  }
+  .pill-error {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
+    background: rgba(248, 113, 113, 0.12);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.25);
+  }
+  [data-theme="v2"] .pill-error {
+    box-shadow: 0 0 14px -4px rgba(248, 113, 113, 0.25);
+  }
+
+  /* V2 cyan text accent */
+  [data-theme="v2"] .text-accent-glow {
+    color: rgb(var(--accent-glow));
+    text-shadow: 0 0 20px rgba(var(--accent) / 0.5);
+  }
+
+  /* V2 focus ring */
+  [data-theme="v2"] input:focus,
+  [data-theme="v2"] textarea:focus,
+  [data-theme="v2"] select:focus {
+    outline: none;
+    border-color: rgba(var(--accent) / 0.45) !important;
+    box-shadow: 0 0 0 3px rgba(var(--accent) / 0.10);
+  }
+
+  /* Eyebrow pill label */
+  .eyebrow-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 font-mono text-xs transition-colors;
+    border: 1px solid rgba(var(--accent) / 0.25);
+    background: rgba(var(--accent) / 0.07);
+    color: rgb(var(--accent-soft));
+  }
+  [data-theme="v2"] .eyebrow-pill {
+    border-color: rgba(var(--accent) / 0.20);
+    box-shadow: 0 0 16px -4px rgba(var(--accent) / 0.15);
+    letter-spacing: 0.05em;
+  }
+
+  /* Theme toggle */
+  .theme-toggle {
+    @apply relative inline-flex items-center rounded-full border font-mono text-[11px] font-medium transition-all duration-200;
+    border-color: var(--border-2);
+    background: var(--surface-2);
+    padding: 2px;
+    gap: 0;
+    user-select: none;
+  }
+  .theme-toggle span {
+    @apply relative z-10 cursor-pointer rounded-full px-3 py-1 transition-all duration-200;
+    color: #64748b;
+  }
+  .theme-toggle span.active {
+    background: rgb(var(--accent));
+    color: var(--btn-text);
+    font-weight: 700;
+  }
+  [data-theme="v1"] .theme-toggle span.active { color: #fff; }
 }
 
-/* provider/model marquee */
-@keyframes marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-.animate-marquee {
-  animation: marquee 38s linear infinite;
-  width: max-content;
-}
-.marquee-mask:hover .animate-marquee {
-  animation-play-state: paused;
-}
+/* ══ Marquee ───────────────────────────────────────────────────────────── */
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.animate-marquee { animation: marquee 38s linear infinite; width: max-content; }
+.marquee-mask:hover .animate-marquee { animation-play-state: paused; }
 .marquee-mask {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
   mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
 }
+
+/* ══ V2 ambient beam (top of page) ─────────────────────────────────────── */
+[data-theme="v2"] #root::before {
+  content: "";
+  position: fixed;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(to right, transparent 10%, rgba(var(--accent)/0.6) 50%, transparent 90%);
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* ══ V2 hero gradient text animation ───────────────────────────────────── */
+@keyframes hue-breathe {
+  0%, 100% { filter: hue-rotate(0deg) brightness(1); }
+  50%       { filter: hue-rotate(15deg) brightness(1.05); }
+}
+[data-theme="v2"] .hero-animate {
+  animation: hue-breathe 8s ease-in-out infinite;
+}
+
+/* ══ Smooth theme transition — only on CSS vars, not all props ───────────── */
+body { transition: background-color 0.3s ease; }
+.glass, .glass-soft { transition: background 0.3s ease, border-color 0.3s ease; }
