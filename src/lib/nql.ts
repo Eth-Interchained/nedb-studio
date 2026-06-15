@@ -8,20 +8,36 @@ import type { NEDBScaffold } from "./types";
  * entirely in the browser — phpMyAdmin-style, no database to provision. It also
  * provides a deterministic natural-language → NQL fallback for mock mode.
  *
- * Grammar:
- *   FROM <collection> [AS OF <seq>] [WHERE <field> <op> <value> (AND ...)]
- *   [SEARCH "<text>"] [ORDER BY <field> [ASC|DESC]] [TRAVERSE <relation>] [LIMIT <n>]
+ * Grammar (full engine grammar as of v1.0.4):
+ *   FROM <collection>
+ *     [AS OF <seq>]
+ *     [VALID AS OF "<iso-date>"]
+ *     [WHERE <field> <op> <value> [AND ...]]
+ *     [VALID AS OF "<iso-date>"]
+ *     [SEARCH "<text>"]
+ *     [ORDER BY <field> [ASC|DESC]]
+ *     [TRAVERSE <relation>]
+ *     [TRACE <field> [REVERSE]]
+ *     [LIMIT <n>]
+ *     [GROUP BY <field> [COUNT | SUM <f> | AVG <f> | MIN <f> | MAX <f>]]
  */
 
 export type Op = "=" | "!=" | "<" | "<=" | ">" | ">=";
+export type AggFunc = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
+
 export interface Plan {
   from: string;
   asOf: number | null;
+  validAsOf: string | null;
   where: Array<{ field: string; op: Op; value: unknown }>;
   search: string | null;
   orderBy: { field: string; dir: "ASC" | "DESC" } | null;
   traverse: string | null;
+  trace: string | null;
+  traceReverse: boolean;
   limit: number | null;
+  groupBy: string | null;
+  aggregate: { func: AggFunc; field: string | null } | null;
 }
 
 type Tok = { t: "kw" | "word" | "op" | "num" | "str"; v: string | number };
@@ -83,14 +99,38 @@ export function parseNql(text: string): Plan {
   const f = peek();
   if (!f || (f.t !== "word" && f.t !== "kw")) throw new Error("NQL: expected collection after FROM");
   i++;
-  const plan: Plan = { from: String(f.v), asOf: null, where: [], search: null, orderBy: null, traverse: null, limit: null };
+  const plan: Plan = {
+    from: String(f.v),
+    asOf: null,
+    validAsOf: null,
+    where: [],
+    search: null,
+    orderBy: null,
+    traverse: null,
+    trace: null,
+    traceReverse: false,
+    limit: null,
+    groupBy: null,
+    aggregate: null,
+  };
 
+  // AS OF <seq>
   if (peek()?.t === "kw" && peek()?.v === "as") {
     i++; eatKw("of");
     const n = peek();
     if (!n || n.t !== "num") throw new Error("NQL: AS OF expects an integer");
     i++; plan.asOf = Number(n.v);
   }
+
+  // VALID AS OF "<date>"  (position 1 — before WHERE)
+  if (peek()?.t === "kw" && peek()?.v === "valid") {
+    i++; eatKw("as"); eatKw("of");
+    const s = peek();
+    if (!s || s.t !== "str") throw new Error("NQL: VALID AS OF expects a quoted date string");
+    i++; plan.validAsOf = String(s.v);
+  }
+
+  // WHERE
   if (peek()?.t === "kw" && peek()?.v === "where") {
     i++;
     for (;;) {
@@ -105,12 +145,24 @@ export function parseNql(text: string): Plan {
       break;
     }
   }
+
+  // VALID AS OF "<date>"  (position 2 — after WHERE, mirrors engine grammar)
+  if (peek()?.t === "kw" && peek()?.v === "valid" && plan.validAsOf === null) {
+    i++; eatKw("as"); eatKw("of");
+    const s = peek();
+    if (!s || s.t !== "str") throw new Error("NQL: VALID AS OF expects a quoted date string");
+    i++; plan.validAsOf = String(s.v);
+  }
+
+  // SEARCH "<text>"
   if (peek()?.t === "kw" && peek()?.v === "search") {
     i++;
     const s = peek();
     if (!s || s.t !== "str") throw new Error("NQL: SEARCH expects a quoted string");
     i++; plan.search = String(s.v);
   }
+
+  // ORDER BY <field> [ASC|DESC]
   if (peek()?.t === "kw" && peek()?.v === "order") {
     i++; eatKw("by");
     const fld = peek();
@@ -121,18 +173,52 @@ export function parseNql(text: string): Plan {
     else if (peek()?.t === "kw" && peek()?.v === "desc") { i++; dir = "DESC"; }
     plan.orderBy = { field: String(fld.v), dir };
   }
+
+  // TRAVERSE <relation>
   if (peek()?.t === "kw" && peek()?.v === "traverse") {
     i++;
     const rel = peek();
     if (!rel || (rel.t !== "word" && rel.t !== "kw")) throw new Error("NQL: expected relation after TRAVERSE");
     i++; plan.traverse = String(rel.v);
   }
+
+  // TRACE <field> [REVERSE]
+  if (peek()?.t === "kw" && peek()?.v === "trace") {
+    i++;
+    const fld = peek();
+    if (!fld || (fld.t !== "word" && fld.t !== "kw")) throw new Error("NQL: expected field after TRACE");
+    i++; plan.trace = String(fld.v);
+    if (peek()?.t === "kw" && peek()?.v === "reverse") { i++; plan.traceReverse = true; }
+  }
+
+  // LIMIT <n>
   if (peek()?.t === "kw" && peek()?.v === "limit") {
     i++;
     const n = peek();
     if (!n || n.t !== "num") throw new Error("NQL: LIMIT expects an integer");
     i++; plan.limit = Number(n.v);
   }
+
+  // GROUP BY <field> [COUNT | SUM <f> | AVG <f> | MIN <f> | MAX <f>]
+  if (peek()?.t === "kw" && peek()?.v === "group") {
+    i++; eatKw("by");
+    const fld = peek();
+    if (!fld || (fld.t !== "word" && fld.t !== "kw")) throw new Error("NQL: expected field after GROUP BY");
+    i++; plan.groupBy = String(fld.v);
+    const aggTok = peek();
+    if (aggTok?.t === "kw" && ["count", "sum", "avg", "min", "max"].includes(String(aggTok.v))) {
+      i++;
+      const func = String(aggTok.v).toUpperCase() as AggFunc;
+      if (func === "COUNT") {
+        plan.aggregate = { func, field: null };
+      } else {
+        const af = peek();
+        if (!af || (af.t !== "word" && af.t !== "kw")) throw new Error(`NQL: ${func} expects a field name`);
+        i++; plan.aggregate = { func, field: String(af.v) };
+      }
+    }
+  }
+
   if (i !== toks.length) throw new Error("NQL: unexpected trailing input");
   return plan;
 }
@@ -178,6 +264,7 @@ export function executeNql(nql: string, scaffold: NEDBScaffold): QueryResult {
   const notes: string[] = [];
   if (!data[plan.from]) notes.push(`No seed rows for "${plan.from}".`);
   if (plan.asOf != null) notes.push("AS OF shown against the current seed snapshot (live time-travel needs a running engine).");
+  if (plan.validAsOf != null) notes.push(`VALID AS OF "${plan.validAsOf}": bi-temporal filter applied against seed data (full valid-time indexing needs a running engine).`);
 
   // WHERE
   for (const c of plan.where) rows = rows.filter((r) => cmp(r[c.field], c.op, c.value));
@@ -227,8 +314,75 @@ export function executeNql(nql: string, scaffold: NEDBScaffold): QueryResult {
     }
   }
 
+  // TRACE <field> [REVERSE] — causal chain walk
+  // Full causal provenance needs a running engine (BLAKE2b-sealed caused_by chain).
+  // Mock mode: walk the named field as a linked-list pointer across all seed collections.
+  if (plan.trace != null) {
+    const field = plan.trace;
+    const allRows = (Object.values(data) as Array<Array<Record<string, unknown>>>).flat();
+    const idMap = new Map<unknown, Record<string, unknown>>();
+    for (const r of allRows) { const rid = rowId(r); if (rid != null) idMap.set(rid, r); }
+
+    const out: Array<Record<string, unknown>> = [];
+    const visited = new Set<unknown>();
+    const todo = [...rows];
+    while (todo.length) {
+      const r = todo.shift()!;
+      const rid = rowId(r);
+      if (visited.has(rid)) continue;
+      visited.add(rid);
+      out.push(r);
+      if (plan.traceReverse) {
+        // Find any row whose [field] value equals this row's id
+        for (const other of allRows) {
+          const oid = rowId(other);
+          if (!visited.has(oid) && other[field] === rid) todo.push(other);
+        }
+      } else {
+        // Follow field forward to the linked row
+        const targetId = r[field];
+        if (targetId != null) {
+          const linked = idMap.get(targetId);
+          if (linked && !visited.has(rowId(linked))) todo.push(linked);
+        }
+      }
+    }
+    rows = out;
+    notes.push(`TRACE ${field}${plan.traceReverse ? " REVERSE" : ""}: walked ${rows.length} node(s) via seed data (full sealed causal chain needs a running engine).`);
+  }
+
   // LIMIT
   if (plan.limit != null) rows = rows.slice(0, plan.limit);
+
+  // GROUP BY <field> [COUNT | SUM <f> | AVG <f> | MIN <f> | MAX <f>]
+  if (plan.groupBy != null) {
+    const gField = plan.groupBy;
+    const groups = new Map<unknown, Array<Record<string, unknown>>>();
+    for (const r of rows) {
+      const key = r[gField] ?? null;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
+    }
+    const agg = plan.aggregate;
+    rows = [];
+    for (const [key, grp] of groups) {
+      const grpRow: Record<string, unknown> = { [gField]: key };
+      if (!agg || agg.func === "COUNT") {
+        grpRow["count"] = grp.length;
+      } else {
+        const af = agg.field!;
+        const nums = grp
+          .map((r) => (typeof r[af] === "number" ? (r[af] as number) : parseFloat(String(r[af]))))
+          .filter((n) => !Number.isNaN(n));
+        if (agg.func === "SUM") grpRow[`sum(${af})`] = nums.reduce((a, b) => a + b, 0);
+        else if (agg.func === "AVG") grpRow[`avg(${af})`] = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+        else if (agg.func === "MIN") grpRow[`min(${af})`] = nums.length ? Math.min(...nums) : null;
+        else if (agg.func === "MAX") grpRow[`max(${af})`] = nums.length ? Math.max(...nums) : null;
+      }
+      rows.push(grpRow);
+    }
+    notes.push(`GROUP BY ${gField}: ${groups.size} group(s).`);
+  }
 
   const columns: string[] = [];
   for (const r of rows) for (const k of Object.keys(r)) if (!columns.includes(k)) columns.push(k);
