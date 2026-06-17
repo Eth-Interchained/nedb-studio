@@ -7,6 +7,7 @@ import { SchemaGraph } from "../src/components/SchemaGraph";
 import type { NEDBScaffold } from "../src/lib/types";
 import type { QueryResult } from "../src/lib/nql";
 import {
+  collectionNames,
   databaseLog,
   deployScaffold,
   dropDatabase,
@@ -134,7 +135,7 @@ export default function DatabasesPage(): React.ReactElement {
       // Synthesize a schema from the live DB (collection names + sampled fields)
       // so NL→NQL has something to work with; queries run on the real engine.
       const collections = [];
-      for (const cname of Object.keys(d.collections)) {
+      for (const cname of collectionNames(d)) {
         let fields: Field[] = [{ name: "_id", type: "string" }];
         try {
           const r = await queryLiveDatabase(name, `FROM ${cname} LIMIT 1`);
@@ -145,13 +146,13 @@ export default function DatabasesPage(): React.ReactElement {
       }
       const liveScaffold: NEDBScaffold = {
         appName: d.name,
-        description: `Live database · ${d.rows} rows · seq ${d.seq}`,
+        description: `Live database · ${d.rows ?? d.seq} rows · seq ${d.seq}`,
         collections,
         // Use live relations from the engine — real graph edges, not sampled
         relations: (d.relations ?? []) as import("../src/lib/types").Relation[],
-        indexes: d.indexes.map(([collection, field, kind]) => ({ collection, field, kind: kind as "eq" | "ordered" | "search" })),
+        indexes: (d.indexes ?? []).map(([collection, field, kind]) => ({ collection, field, kind: kind as "eq" | "ordered" | "search" })),
         seedData: {},
-        nqlExamples: Object.keys(d.collections).slice(0, 3).map((c) => `FROM ${c} LIMIT ${pageSize()}`),
+        nqlExamples: collectionNames(d).slice(0, 3).map((c) => `FROM ${c} LIMIT ${pageSize()}`),
         pythonSnippet: "",
         nodeSnippet: "",
         readmeExport: "",
@@ -305,7 +306,7 @@ export default function DatabasesPage(): React.ReactElement {
                   <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
                 )}
                 <span className="truncate pl-1">◆ {d.name}</span>
-                <span className="ml-2 shrink-0 tabular-nums text-slate-600">{d.rows}</span>
+                {d.rows != null && <span className="ml-2 shrink-0 tabular-nums text-slate-600">{d.rows}</span>}
               </button>
             ))}
             {connected && dbs.length === 0 ? (
@@ -351,8 +352,8 @@ export default function DatabasesPage(): React.ReactElement {
                     {detail.name}
                   </h1>
                   <div className="mt-1 flex flex-wrap gap-3 font-mono text-[11px] text-slate-600">
-                    <span className="text-slate-500">{Object.keys(detail.collections).length}<span className="ml-0.5 text-slate-700"> coll</span></span>
-                    <span className="text-slate-500">{detail.rows}<span className="ml-0.5 text-slate-700"> rows</span></span>
+                    <span className="text-slate-500">{collectionNames(detail).length}<span className="ml-0.5 text-slate-700"> coll</span></span>
+                    {detail.rows != null && <span className="text-slate-500">{detail.rows}<span className="ml-0.5 text-slate-700"> rows</span></span>}
                     <span className="text-slate-500">seq <span className="text-slate-400">{detail.seq}</span></span>
                     <span className="text-slate-700" title={detail.head}>
                       head <span className="text-slate-600">{detail.head.slice(0, 10)}…</span>
@@ -362,11 +363,11 @@ export default function DatabasesPage(): React.ReactElement {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => void onVerify()}
-                    className={detail.integrity.ok ? "pill-verified" : "pill-error"}
+                    className={detail.integrity?.ok ? "pill-verified" : "pill-unverified"}
                     title="Re-verify the hash-chained log"
                   >
                     <span className="opacity-80">●</span>
-                    {detail.integrity.ok ? "verified" : "tampered"}
+                    {detail.integrity == null ? "verify" : detail.integrity.ok ? "verified" : "tampered"}
                   </button>
                   <div className="flex flex-wrap items-center gap-1 text-xs">
                     {(["schema", "query", "log", "connect"] as Tab[]).map((t) => (
@@ -392,9 +393,14 @@ export default function DatabasesPage(): React.ReactElement {
 
               {/* collections strip (browse) */}
               <div className="flex flex-wrap gap-1.5 border-b px-4 py-2.5" style={{ borderColor: "var(--border-2)" }}>
-                {Object.entries(detail.collections).map(([c, n]) => (
+                {collectionNames(detail).map((c) => (
                   <button key={c} onClick={() => browse(c)} className="chip" title={`Browse ${c}`}>
-                    {c} <span className="ml-0.5 font-mono text-[10px] tabular-nums text-slate-600">{n}</span>
+                    {c}
+                    {!Array.isArray(detail.collections) && (
+                      <span className="ml-0.5 font-mono text-[10px] tabular-nums text-slate-600">
+                        {(detail.collections as Record<string, number>)[c]}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

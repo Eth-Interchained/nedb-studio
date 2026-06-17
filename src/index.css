@@ -221,6 +221,15 @@ body {
   [data-theme="v2"] .pill-error {
     box-shadow: 0 0 14px -4px rgba(248, 113, 113, 0.25);
   }
+  .pill-unverified {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
+    background: rgba(100, 116, 139, 0.12);
+    color: #94a3b8;
+    border: 1px solid rgba(100, 116, 139, 0.25);
+  }
+  [data-theme="v2"] .pill-unverified {
+    box-shadow: 0 0 14px -4px rgba(100, 116, 139, 0.15);
+  }
 
   /* V2 cyan text accent */
   [data-theme="v2"] .text-accent-glow {
