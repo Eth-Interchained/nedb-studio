@@ -12,7 +12,9 @@ import type { NEDBScaffold } from "../lib/types";
 export const databases = Router();
 
 function fail(res: import("express").Response, e: unknown): void {
-  res.status(502).json({ error: e instanceof Error ? e.message : String(e) });
+  const msg = e instanceof Error ? e.message : String(e);
+  // Always include ok:false so frontend code reading response.ok doesn't crash
+  res.status(502).json({ ok: false, error: msg });
 }
 
 // Connection status (does the configured nedbd answer?).
@@ -76,13 +78,19 @@ databases.delete("/:name", async (req, res) => {
 databases.post("/:name/query", async (req, res) => {
   const nql = String(req.body?.nql ?? "").trim();
   if (!nql) {
-    res.status(400).json({ error: "nql is required" });
+    res.status(400).json({ ok: false, error: "nql is required" });
     return;
   }
   try {
     res.json(await nedb.queryDatabase(req.params.name, nql));
   } catch (e) {
-    fail(res, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    // If the database simply doesn't exist, return empty rows rather than crashing
+    if (/not found|404/i.test(msg)) {
+      res.json({ ok: true, rows: [], count: 0, seq: 0, head: "" });
+    } else {
+      fail(res, e);
+    }
   }
 });
 
