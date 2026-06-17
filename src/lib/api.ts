@@ -83,14 +83,20 @@ export interface DbSummary {
   name: string;
   seq: number;
   head: string;
-  rows: number;
-  collections: Record<string, number>;
+  rows?: number;                                    // v1 AOF only; v2 DAG omits this
+  collections: string[] | Record<string, number>;  // v2 DAG = string[], v1 AOF = Record<string,number>
 }
 
 export interface DbDetail extends DbSummary {
-  indexes: Array<[string, string, string]>;
+  indexes?: Array<[string, string, string]>;        // optional — v2 DAG may omit
   relations?: Array<{ from: string; relation: string; to: string; cardinality: string }>;
-  integrity: { ok: boolean };
+  integrity?: { ok: boolean };                      // only present after a verify call
+}
+
+/** Normalize collections to an array of names regardless of nedbd engine version. */
+export function collectionNames(d: Pick<DbSummary, "collections">): string[] {
+  if (Array.isArray(d.collections)) return d.collections;
+  return Object.keys(d.collections);
 }
 
 export interface DbQueryResult {
