@@ -1,29 +1,24 @@
-# NEDB Maintainer — Ideas for Next Turn
+# ideas.md — next sprint priorities
 
-*Updated: 2026-06-14 · by NEDB Maintainer agent*
+## 1. itcd mainnet sync test on VPS
+**What:** Boot interchainedd v0.3.3 on the Contabo VPS and sync ITC mainnet blocks.
+**Why:** Proves Phase 2 NEDB storage works end-to-end under real block load. Each block write
+goes to nedb_core_v2::Db via nedb_batch_write → flush_all(). Watch the BLAKE2b state root
+advance with real ITC blocks. Connect NEDB Studio to the chainstate directory.
+**How:** Download v0.3.3 glibc artifact, set NEDB_TMK, run -datadir=/var/lib/itcd.
 
----
+## 2. nedb_get hot-path cache for UTXO lookups
+**What:** Add an in-memory LRU cache in the Phase 2 nedb_get implementation.
+**Why:** UTXO lookups are the hot path during block validation (thousands per block).
+Each nedb_get currently reads indexes/{coll}/id/{shard}/{id} from disk — no caching.
+LevelDB has aggressive block cache. Add a DashMap<hex_key, Vec<u8>> in NedbHandle
+with a configurable max-entries eviction policy.
+**How:** Add cache field to Phase 2 NedbHandle, check before Db::get, populate on miss.
 
-## Idea 1 — Files API proxy in Studio (Gap: engine has it, studio doesn't)
-
-**What:** Expose nedbd's file storage API (`POST /databases/<name>/files`, `GET /databases/<name>/files/<filename>`, `GET .../files/<filename>/root`) through the Studio Express server and add a Files tab in the Databases page.
-
-**Why:** The engine ships a complete versioned file store with Cascade compression and per-version Merkle roots — it's one of NEDB's most distinctive capabilities. Studio users have no way to upload, retrieve, or verify files without hitting the nedbd API directly. The `/root` endpoint returns an anchorable Merkle proof, which is the bridge to on-chain anchoring (ITC/BSC). Surfacing this in the UI makes that capability discoverable.
-
----
-
-## Idea 2 — Browser-side NQL GROUP BY support (Gap: engine supports it, Studio mock doesn't)
-
-**What:** Extend `src/lib/nql.ts`'s `parseNql` and `executeNql` functions to handle `GROUP BY <field> [COUNT|SUM|AVG|MIN|MAX]`. The keywords are already in the lexer's `KEYWORDS` set; only the parse + execute logic is missing.
-
-**Why:** Any user who writes `FROM users GROUP BY status COUNT` against a scaffold's seed data in mock mode gets an "unexpected trailing input" parse error — even though the live engine handles it fine. This breaks the Studio demo experience for a common analytics pattern and creates a frustrating mismatch between mock and live behavior.
-
----
-
-## Idea 3 — Checkpoint button + backfill missing studio git tags v0.4–v0.6
-
-**What (part A):** Add a "Checkpoint" button to the Databases page that calls `POST /databases/<name>/checkpoint` via a new studio route. Show a toast with the returned `head` hash.
-
-**What (part B):** Backfill missing git tags `v0.4.0` through `v0.6.1` on `Eth-Interchained/nedb-studio` — the current tags only go to `v0.3.7` even though the code is at `v0.6.1`.
-
-**Why:** Checkpoints let nedbd restart in O(delta) time rather than replaying the full AOF log — users running large databases benefit immediately. The tag gap means there's no reliable way to `git checkout v0.5.0` or see a GitHub releases page for Studio, making the project look unmaintained to anyone browsing the repo.
+## 3. wrap_redis v2 port — nedbd HTTP shadow writes
+**What:** Port wrap_redis from v1 in-process Python engine to v2 HTTP shadow mode.
+**Why:** wrap_redis currently uses the v1 AOF engine in-process. v2 DAG mode goes over HTTP
+to nedbd --dag using nedb-engine-client instead. Supports dual mode: v1 (existing behavior)
+and v2 (HTTP shadow to nedbd --dag).
+**How:** Add nedbd_url parameter to wrap_redis constructor. Pattern: Redis receives all writes
+normally, NEDB shadows them alongside via HTTP PUT to nedbd.
